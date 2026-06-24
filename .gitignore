@@ -1,0 +1,53 @@
+# --- Секреты / сертификаты ---
+/certs/
+*.key
+*.pem
+*.crt
+*.csr
+*.srl
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+*_pb2.py
+*_pb2_grpc.py
+*_pb2.pyi
+
+# --- PyInstaller ---
+/build/
+/dist/
+*.spec
+
+# --- Сгенерированный proto-код ---
+/proto/gen/*_pb2.py
+/proto/gen/*_pb2_grpc.py
+/proto/gen/*_pb2.pyi
+
+# --- Django ---
+/server/web/staticfiles/
+db.sqlite3
+
+# --- Локальное состояние / буферы ---
+*.db
+*.sqlite3
+/agent/buffer/
+
+# --- Рабочие каталоги (черновики, отчёты, сборка пакетов) ---
+/scratch/
+/reports/
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# --- Claude Code ---
+.claude/
