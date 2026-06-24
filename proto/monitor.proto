@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+// Контракт связи агент <-> ingest. Транспорт: gRPC поверх TLS 1.3 + mTLS, порт 1222.
+// Агент делает только исходящие вызовы; сервер сам к агенту не подключается.
+package aegis.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// ----------------------------------------------------------------------------
+// Сервис, который агент вызывает на ingest.
+// ----------------------------------------------------------------------------
+service Monitor {
+  // Регистрация новой машины: агент предъявляет одноразовый enrollment-токен,
+  // сервер выдаёт ему client-сертификат (PEM). Вызывается ОДИН раз при первом
+  // запуске поверх TLS (server-auth), дальше агент работает уже по mTLS.
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+
+  // Периодический сигнал «я жив» + текущий статус. Раз в 30-60 с.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Поток пачек метрик вверх (client-streaming). Агент шлёт буфер, по концу
+  // потока получает подтверждение. Так же дошлёт накопленное после реконнекта.
+  rpc ReportMetrics(stream MetricsBatch) returns (ReportAck);
+
+  // Событие (дрейф конфигурации, падение службы и т.п.) — отправляется сразу.
+  rpc ReportEvent(Event) returns (ReportAck);
+
+  // Агент забирает свой конфиг/политику (whitelist доменов, правила firewall,
+  // что мониторить). Возвращается с подписью — агент применяет только подписанное.
+  rpc GetConfig(ConfigRequest) returns (ConfigResponse);
+}
+
+// ----------------------------------------------------------------------------
+// Регистрация (enrollment)
+// ----------------------------------------------------------------------------
+message EnrollRequest {
+  string enrollment_token = 1;   // одноразовый токен, выдан админом
+  string hostname = 2;
+  string os = 3;                 // "linux" | "windows"
+  string arch = 4;               // "amd64" | "arm64" | ...
+  string csr_pem = 5;            // CSR агента; сервер подписывает его своим CA
+}
+
+message EnrollResponse {
+  string agent_id = 1;           // присвоенный машине идентификатор
+  string client_cert_pem = 2;    // подписанный CA сертификат агента
+  string ca_cert_pem = 3;        // наш CA, чтобы агент проверял сервер
+  string config_version = 4;     // версия политики, актуальная на момент выдачи
+}
+
+// ----------------------------------------------------------------------------
+// Heartbeat
+// ----------------------------------------------------------------------------
+message HeartbeatRequest {
+  string agent_id = 1;
+  google.protobuf.Timestamp sent_at = 2;
+  string agent_version = 3;
+  string config_version = 4;     // какую версию политики агент сейчас применяет
+}
+
+message HeartbeatResponse {
+  google.protobuf.Timestamp server_time = 1;
+  bool config_outdated = 2;      // true -> агенту стоит вызвать GetConfig
+  uint32 next_interval_sec = 3;  // сервер может подстроить частоту heartbeat
+}
+
+// ----------------------------------------------------------------------------
+// Метрики
+// ----------------------------------------------------------------------------
+// Одно измерение в момент времени. Имя в стиле Prometheus (cpu_usage_percent,
+// mem_used_bytes, disk_used_percent, net_bytes_sent ...), labels — доп. разрезы
+// (например disk="/", iface="eth0").
+message Sample {
+  string name = 1;
+  double value = 2;
+  google.protobuf.Timestamp ts = 3;
+  map<string, string> labels = 4;
+}
+
+message MetricsBatch {
+  string agent_id = 1;
+  repeated Sample samples = 2;
+}
+
+message ReportAck {
+  uint32 accepted = 1;           // сколько записей принято
+  string message = 2;
+}
+
+// ----------------------------------------------------------------------------
+// События
+// ----------------------------------------------------------------------------
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  INFO = 1;
+  WARNING = 2;
+  CRITICAL = 3;
+}
+
+message Event {
+  string agent_id = 1;
+  string type = 2;               // "drift", "service_down", "policy_applied", ...
+  Severity severity = 3;
+  string message = 4;
+  map<string, string> payload = 5;
+  google.protobuf.Timestamp occurred_at = 6;
+}
+
+// ----------------------------------------------------------------------------
+// Конфиг / политика (сверху вниз)
+// ----------------------------------------------------------------------------
+message ConfigRequest {
+  string agent_id = 1;
+  string current_version = 2;    // что уже применено — для дельты
+}
+
+message ConfigResponse {
+  string version = 1;
+  Policy policy = 2;
+  // Подпись JSON-представления policy ключом сервера. Агент применяет правила
+  // только при валидной подписи (защита от подмены политики).
+  bytes signature = 3;
+}
+
+message Policy {
+  repeated FirewallRule firewall = 1;
+  repeated string allowed_domains = 2;   // whitelist исходящих доменов
+  repeated string monitored_services = 3; // службы, за которыми следим
+  uint32 metrics_interval_sec = 4;
+}
+
+message FirewallRule {
+  string chain = 1;              // INPUT | OUTPUT | FORWARD
+  string action = 2;            // ACCEPT | DROP | REJECT
+  string protocol = 3;          // tcp | udp | icmp | all
+  string direction = 4;         // in | out
+  string remote = 5;            // CIDR/host, "" = любой
+  uint32 port = 6;              // 0 = любой
+  string comment = 7;
+}
