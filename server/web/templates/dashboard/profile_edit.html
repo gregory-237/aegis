@@ -1,0 +1,25 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{{ profile.name }} — AEGIS{% endblock %}
+{% block heading %}Профиль: {{ profile.name }}{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:760px">
+  <form method="post">
+    {% csrf_token %}
+    <label for="description">Описание</label>
+    <input type="text" name="description" id="description" value="{{ profile.description }}">
+
+    <label for="policy">Политика (JSON)</label>
+    <textarea name="policy" id="policy" rows="20">{{ policy_json }}</textarea>
+    <p class="muted" style="font-size:12px; margin-top:8px">
+      Поля: <span class="mono">firewall[]</span>, <span class="mono">allowed_domains[]</span>,
+      <span class="mono">monitored_services[]</span>, <span class="mono">metrics_interval_sec</span>.
+    </p>
+
+    <div style="margin-top:18px; display:flex; gap:10px;">
+      <button type="submit" class="btn primary">Сохранить</button>
+      <a href="{% url 'profiles' %}" class="btn">Отмена</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

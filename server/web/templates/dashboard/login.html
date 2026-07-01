@@ -1,0 +1,33 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход — AEGIS</title>
+  <link rel="stylesheet" href="{% static 'css/aegis.css' %}">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="brand">
+      {% include "dashboard/_logo.html" %}
+      <span class="word">AE<b>G</b>IS</span>
+    </div>
+    <div class="sub">Мониторинг и управление конфигурацией</div>
+    {% if form.errors %}
+      <div class="msg error">Неверный логин или пароль</div>
+    {% endif %}
+    <form method="post" action="{% url 'login' %}">
+      {% csrf_token %}
+      <label for="id_username">Логин</label>
+      <input type="text" name="username" id="id_username" autofocus required>
+      <label for="id_password">Пароль</label>
+      <input type="password" name="password" id="id_password" required>
+      <input type="hidden" name="next" value="{{ next }}">
+      <button class="btn primary" type="submit" style="width:100%; justify-content:center; margin-top:22px;">Войти</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

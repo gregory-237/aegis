@@ -1,0 +1,39 @@
+{% extends "dashboard/base.html" %}
+{% block title %}События — AEGIS{% endblock %}
+{% block heading %}События{% endblock %}
+
+{% block content %}
+<div class="filters">
+  <a href="{% url 'events' %}" class="{% if not severity %}active{% endif %}">Все</a>
+  <a href="?severity=INFO" class="{% if severity == 'INFO' %}active{% endif %}">INFO</a>
+  <a href="?severity=WARNING" class="{% if severity == 'WARNING' %}active{% endif %}">WARNING</a>
+  <a href="?severity=CRITICAL" class="{% if severity == 'CRITICAL' %}active{% endif %}">CRITICAL</a>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Время</th><th>Машина</th><th>Тип</th><th>Важность</th><th>Сообщение</th></tr></thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td class="muted">{{ e.created_at }}</td>
+        <td class="mono">{% if e.machine %}<a href="{% url 'machine_detail' e.machine.pk %}">{{ e.machine.hostname|default:e.agent_id }}</a>{% else %}{{ e.agent_id }}{% endif %}</td>
+        <td class="mono">{{ e.type }}</td>
+        <td><span class="badge {{ e.severity|lower }}">{{ e.severity }}</span></td>
+        <td>{{ e.message }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="empty">Событий нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if is_paginated %}
+<div class="pager">
+  {% if page_obj.has_previous %}<a class="btn" href="?page={{ page_obj.previous_page_number }}{% if severity %}&severity={{ severity }}{% endif %}">← назад</a>{% endif %}
+  <span>стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a class="btn" href="?page={{ page_obj.next_page_number }}{% if severity %}&severity={{ severity }}{% endif %}">вперёд →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

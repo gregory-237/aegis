@@ -1,0 +1,25 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Машины — AEGIS{% endblock %}
+{% block heading %}Машины{% endblock %}
+
+{% block content %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Хост</th><th>ОС / арх.</th><th>Статус</th><th>Профиль</th><th>Версия</th><th>Последний контакт</th></tr></thead>
+    <tbody>
+      {% for m in machines %}
+      <tr>
+        <td class="name"><a href="{% url 'machine_detail' m.pk %}">{{ m.hostname|default:m.agent_id }}</a><div class="muted mono">{{ m.agent_id }}</div></td>
+        <td><span class="badge os">{{ m.os|default:"—" }}{% if m.arch %} · {{ m.arch }}{% endif %}</span></td>
+        <td>{% if m.live %}<span class="badge on"><span class="dot on"></span>online</span>{% else %}<span class="badge off">offline</span>{% endif %}</td>
+        <td>{{ m.profile.name|default:"—" }}</td>
+        <td class="mono">{{ m.agent_version|default:"—" }}</td>
+        <td class="muted">{{ m.last_seen|default:"никогда" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="empty">Пока нет ни одной машины. Запустите агента — он зарегистрируется автоматически.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

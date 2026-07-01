@@ -1,0 +1,26 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Профили — AEGIS{% endblock %}
+{% block heading %}Профили политик{% endblock %}
+
+{% block content %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Название</th><th>Описание</th><th>Версия</th><th>Обновлён</th><th></th></tr></thead>
+    <tbody>
+      {% for p in profiles %}
+      <tr>
+        <td class="name">{{ p.name }}</td>
+        <td class="muted">{{ p.description|default:"—" }}</td>
+        <td class="mono">{{ p.version }}</td>
+        <td class="muted">{{ p.updated_at }}</td>
+        <td style="text-align:right">
+          {% if is_admin %}<a class="btn" href="{% url 'profile_edit' p.pk %}">Изменить</a>{% else %}<span class="muted">только чтение</span>{% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="empty">Профилей пока нет. Создайте через Django admin или REST API.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

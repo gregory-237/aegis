@@ -1,0 +1,71 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Дашборд — AEGIS{% endblock %}
+{% block heading %}Дашборд{% endblock %}
+{% block topbar_right %}<span class="muted">обновлено сейчас</span>{% endblock %}
+
+{% block content %}
+<div class="grid stats">
+  <div class="card stat">
+    <div class="k">Всего машин</div>
+    <div class="v accent">{{ total_machines }}</div>
+  </div>
+  <div class="card stat">
+    <div class="k">Онлайн</div>
+    <div class="v ok">{{ online_machines }}</div>
+  </div>
+  <div class="card stat">
+    <div class="k">Офлайн</div>
+    <div class="v dim">{{ offline_machines }}</div>
+  </div>
+  <div class="card stat">
+    <div class="k">Critical за 24ч</div>
+    <div class="v {% if critical_24h %}bad{% else %}dim{% endif %}">{{ critical_24h }}</div>
+  </div>
+</div>
+
+<div class="section-title">
+  <h2>Машины</h2>
+  <a href="{% url 'machines' %}">все →</a>
+</div>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Хост</th><th>ОС</th><th>Статус</th><th>Версия</th><th>Последний контакт</th></tr></thead>
+    <tbody>
+      {% for m in machines %}
+      <tr>
+        <td class="name"><a href="{% url 'machine_detail' m.pk %}">{{ m.hostname|default:m.agent_id }}</a><div class="muted mono">{{ m.agent_id }}</div></td>
+        <td><span class="badge os">{{ m.os|default:"—" }}</span></td>
+        <td>{% if m.live %}<span class="dot on"></span>online{% else %}<span class="dot off"></span>offline{% endif %}</td>
+        <td class="mono">{{ m.agent_version|default:"—" }}</td>
+        <td class="muted">{{ m.last_seen|default:"никогда" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="empty">Пока нет ни одной машины. Запустите агента.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="section-title">
+  <h2>Последние события</h2>
+  <a href="{% url 'events' %}">все →</a>
+</div>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Время</th><th>Машина</th><th>Тип</th><th>Важность</th><th>Сообщение</th></tr></thead>
+    <tbody>
+      {% for e in recent_events %}
+      <tr>
+        <td class="muted">{{ e.created_at }}</td>
+        <td class="mono">{{ e.machine.hostname|default:e.agent_id }}</td>
+        <td class="mono">{{ e.type }}</td>
+        <td><span class="badge {{ e.severity|lower }}">{{ e.severity }}</span></td>
+        <td>{{ e.message }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="empty">Событий ещё нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

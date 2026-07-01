@@ -1,0 +1,87 @@
+{% extends "dashboard/base.html" %}
+{% load aegis_extras %}
+{% block title %}{{ machine.hostname|default:machine.agent_id }} — AEGIS{% endblock %}
+{% block heading %}{{ machine.hostname|default:machine.agent_id }}{% endblock %}
+{% block topbar_right %}
+  {% if machine.live %}<span class="badge on"><span class="dot on"></span>online</span>{% else %}<span class="badge off">offline</span>{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid" style="grid-template-columns: 1fr 1fr; align-items:start;">
+  <div class="card">
+    <div class="section-title" style="margin-top:0"><h2>Информация</h2></div>
+    <dl class="kv">
+      <dt>agent_id</dt><dd class="mono">{{ machine.agent_id }}</dd>
+      <dt>Хост</dt><dd>{{ machine.hostname|default:"—" }}</dd>
+      <dt>IP</dt><dd class="mono">{{ machine.ip|default:"—" }}</dd>
+      <dt>ОС / арх.</dt><dd>{{ machine.os|default:"—" }} · {{ machine.arch|default:"—" }}</dd>
+      <dt>Версия агента</dt><dd class="mono">{{ machine.agent_version|default:"—" }}</dd>
+      <dt>Профиль</dt><dd>{{ machine.profile.name|default:"не назначен" }}</dd>
+      <dt>Конфиг</dt><dd class="mono">{{ machine.config_version|default:"—" }}</dd>
+      <dt>Последний контакт</dt><dd class="muted">{{ machine.last_seen|default:"никогда" }}</dd>
+    </dl>
+
+    {% if is_admin %}
+    <form method="post" action="{% url 'machine_assign_profile' machine.pk %}" style="margin-top:16px; display:flex; gap:10px; align-items:flex-end;">
+      {% csrf_token %}
+      <div style="flex:1">
+        <label>Назначить профиль</label>
+        <select name="profile_id">
+          <option value="">— не назначен —</option>
+          {% for p in profiles %}
+            <option value="{{ p.pk }}" {% if machine.profile_id == p.pk %}selected{% endif %}>{{ p.name }} ({{ p.version }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn primary">Применить</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="section-title" style="margin-top:0"><h2>Метрики сейчас</h2></div>
+    {% if latest %}
+      <div class="kv">
+        {% for key, val in latest.items %}
+          <dt>{{ metric_labels|get_item:key|default:key }}</dt>
+          <dd>
+            {{ val }}%
+            <div class="bar"><span class="{% if val >= 90 %}crit{% elif val >= 75 %}warn{% endif %}" style="width: {{ val }}%"></span></div>
+          </dd>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="muted">Нет свежих метрик (VictoriaMetrics недоступна или агент ещё не прислал данные).</div>
+    {% endif %}
+
+    {% if disks %}
+    <div class="section-title"><h2>Диски</h2></div>
+    <div class="kv">
+      {% for mount, pct in disks %}
+        <dt class="mono">{{ mount }}</dt>
+        <dd>{{ pct }}%<div class="bar"><span class="{% if pct >= 90 %}crit{% elif pct >= 75 %}warn{% endif %}" style="width: {{ pct }}%"></span></div></dd>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="section-title"><h2>События машины</h2></div>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Время</th><th>Тип</th><th>Важность</th><th>Сообщение</th></tr></thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td class="muted">{{ e.created_at }}</td>
+        <td class="mono">{{ e.type }}</td>
+        <td><span class="badge {{ e.severity|lower }}">{{ e.severity }}</span></td>
+        <td>{{ e.message }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="empty">Событий по этой машине нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
