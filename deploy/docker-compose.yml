@@ -1,0 +1,115 @@
+# Полный стек Aegis: PostgreSQL, VictoriaMetrics, ingest, web, Grafana.
+#
+#   bash scripts/gen-certs.sh                              # сначала сертификаты
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# Креды и секреты — из deploy/.env (см. deploy/.env.example).
+# Веб-панель: http://<host>:8000   Grafana: http://<host>:3000   ingest(mTLS): <host>:1222
+
+services:
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.103.0
+    container_name: aegis-vm
+    ports:
+      - "8428:8428"
+    command:
+      - "--storageDataPath=/vmdata"
+      - "--retentionPeriod=6"
+    volumes:
+      - vmdata:/vmdata
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: aegis-pg
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aegis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegis}
+      POSTGRES_DB: ${POSTGRES_DB:-aegis}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aegis} -d ${POSTGRES_DB:-aegis}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  ingest:
+    build:
+      context: ..
+      dockerfile: deploy/ingest.Dockerfile
+    container_name: aegis-ingest
+    ports:
+      - "1222:1222"
+    environment:
+      AEGIS_VM_URL: http://victoriametrics:8428
+      AEGIS_PG_DSN: postgresql://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD:-aegis}@postgres:5432/${POSTGRES_DB:-aegis}
+      AEGIS_CA_CERT: /certs/ca.crt
+      AEGIS_SERVER_CERT: /certs/server.crt
+      AEGIS_SERVER_KEY: /certs/server.key
+      AEGIS_TELEGRAM_TOKEN: ${AEGIS_TELEGRAM_TOKEN:-}
+      AEGIS_TELEGRAM_CHAT_ID: ${AEGIS_TELEGRAM_CHAT_ID:-}
+      AEGIS_ALERT_MIN_SEVERITY: ${AEGIS_ALERT_MIN_SEVERITY:-WARNING}
+    volumes:
+      - ../certs:/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      victoriametrics:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    container_name: aegis-web
+    ports:
+      - "8000:8000"
+    environment:
+      AEGIS_DB_HOST: postgres
+      AEGIS_DB_NAME: ${POSTGRES_DB:-aegis}
+      AEGIS_DB_USER: ${POSTGRES_USER:-aegis}
+      AEGIS_DB_PASSWORD: ${POSTGRES_PASSWORD:-aegis}
+      AEGIS_VM_URL: http://victoriametrics:8428
+      AEGIS_WEB_SECRET_KEY: ${AEGIS_WEB_SECRET_KEY:-dev-insecure-change-me}
+      AEGIS_WEB_DEBUG: "0"
+      AEGIS_WEB_ALLOWED_HOSTS: ${AEGIS_WEB_ALLOWED_HOSTS:-*}
+      AEGIS_WEB_CSRF_ORIGINS: ${AEGIS_WEB_CSRF_ORIGINS:-}
+      AEGIS_WEB_BEHIND_PROXY: ${AEGIS_WEB_BEHIND_PROXY:-0}
+      AEGIS_ADMIN_USER: ${AEGIS_ADMIN_USER:-admin}
+      AEGIS_ADMIN_PASSWORD: ${AEGIS_ADMIN_PASSWORD:-admin12345}
+      AEGIS_OBSERVER_USER: ${AEGIS_OBSERVER_USER:-}
+      AEGIS_OBSERVER_PASSWORD: ${AEGIS_OBSERVER_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: aegis-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      victoriametrics:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  vmdata:
+  pgdata:
+  grafanadata:

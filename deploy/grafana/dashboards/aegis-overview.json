@@ -1,0 +1,71 @@
+{
+  "uid": "aegis-overview",
+  "title": "Aegis — обзор машин",
+  "tags": ["aegis"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-3h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "agent",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "aegis-vm" },
+        "query": { "query": "label_values(cpu_usage_percent, agent_id)", "refId": "A" },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "label": "Машина"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU, %",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "aegis-vm" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "cpu_usage_percent{agent_id=~\"$agent\"}", "legendFormat": "{{agent_id}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "RAM, %",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "aegis-vm" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "mem_used_percent{agent_id=~\"$agent\"}", "legendFormat": "{{agent_id}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Диск, % (по точкам монтирования)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "aegis-vm" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "disk_used_percent{agent_id=~\"$agent\"}", "legendFormat": "{{agent_id}} {{mount}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Сеть, байт/с",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "aegis-vm" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(net_bytes_sent{agent_id=~\"$agent\"}[5m])", "legendFormat": "{{agent_id}} tx" },
+        { "refId": "B", "expr": "rate(net_bytes_recv{agent_id=~\"$agent\"}[5m])", "legendFormat": "{{agent_id}} rx" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+# Автозапуск агента Aegis при загрузке (Linux). Положить в /etc/systemd/system/
+# и включить: systemctl daemon-reload && systemctl enable --now aegis-agent
+[Unit]
+Description=Aegis agent (monitoring + policy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# нужен root для применения firewall (iptables/nftables)
+User=root
+Environment=AEGIS_SERVER_HOST=aegis.example.com
+Environment=AEGIS_SERVER_PORT=1222
+Environment=AEGIS_CA_CERT=/etc/aegis/ca.crt
+Environment=AEGIS_AGENT_CERT=/etc/aegis/agent.crt
+Environment=AEGIS_AGENT_KEY=/etc/aegis/agent.key
+Environment=AEGIS_POLICY_APPLY=1
+ExecStart=/usr/local/bin/aegis-agent
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
