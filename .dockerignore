@@ -1,0 +1,13 @@
+# Контекст сборки = корень репозитория; исключаем тяжёлое и секретное.
+.venv/
+.git/
+certs/
+**/__pycache__/
+**/*.pyc
+proto/gen/
+server/web/staticfiles/
+agent/buffer/
+*.log
+.pytest_cache/
+.env
+**/.env
