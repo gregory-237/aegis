@@ -44,8 +44,9 @@ def test_windows_rule_generation():
         default_drop_output=False,
     )
     text = [str(c) for c in cmds]
-    assert any("delete rule" in x for x in text)          # снос старых правил Aegis
-    assert any("action=block" in x and "remoteport=445" in x for x in text)
+    assert any("Remove-NetFirewallRule" in x for x in text)  # снос старых правил Aegis
+    assert any("New-NetFirewallRule" in x and "-Action 'Block'" in x
+               and "-RemotePort '445'" in x for x in text)
 
 
 def test_manager_compiles_whitelist_to_accepts(monkeypatch):

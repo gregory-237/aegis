@@ -55,11 +55,11 @@ def test_windows_drift_by_name():
     b = WindowsFirewallBackend()
     rules = [FirewallRule(action="ACCEPT", protocol="tcp", remote="1.2.3.4", comment="allow x")]
     desired = b.desired_keys(rules, default_drop_output=False)
-    # имитируем вывод `netsh ... show rule` с локализованными метками, но нашим именем
-    netsh_out = "Имя правила:  Aegis-0-allow_x\nВключено:  Да\nДействие:  Allow\n"
-    assert detect_drift(desired, b.parse_current([netsh_out])).drifted is False
+    # PowerShell Get-NetFirewallRule | Select DisplayName выдаёт по имени в строке
+    ps_out = "Aegis-0-allow_x\n"
+    assert detect_drift(desired, b.parse_current([ps_out])).drifted is False
     # правило удалили вручную -> дрейф
-    assert detect_drift(desired, b.parse_current(["(пусто)"])).drifted is True
+    assert detect_drift(desired, b.parse_current([""])).drifted is True
 
 
 def _fake_runner(out_text: str, in_text: str):

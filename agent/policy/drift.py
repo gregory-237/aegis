@@ -63,9 +63,10 @@ class DriftMonitor:
         """Повторно применить эталонные правила. Возвращает список ошибок."""
         failures: list[str] = []
         for cmd in self._backend.build_commands(self._rules, self._default_drop):
-            rc, _out, err = self._run(cmd)
+            rc, out, err = self._run(cmd)
             if rc != 0 and not cmd.allow_fail:
-                failures.append(f"rc={rc}: {cmd} :: {err.strip()}")
+                msg = (err.strip() or out.strip() or "<no output>").splitlines()[-1][:200]
+                failures.append(f"rc={rc}: {cmd} :: {msg}")
         if failures:
             log.error("откат с ошибками: %s", failures)
         else:

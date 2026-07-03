@@ -148,9 +148,10 @@ class PolicyManager:
 
     @staticmethod
     def _run(cmd: Command) -> int:
-        rc, _out, err = run_command(cmd)
+        rc, out, err = run_command(cmd)
         if rc != 0 and not cmd.allow_fail:
-            log.warning("команда не удалась (%s): %s", rc, err.strip())
+            msg = (err.strip() or out.strip() or "<no output>").splitlines()[-1][:200]
+            log.warning("команда не удалась (rc=%s): %s\n  %s", rc, cmd, msg)
         return rc
 
     def cleanup(self, dry_run: bool = False) -> list[str]:

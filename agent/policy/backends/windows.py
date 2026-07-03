@@ -1,5 +1,10 @@
-"""Windows firewall backend на netsh advfirewall. Правила помечаются именем
-'Aegis-*' и группой, чтобы их можно было найти/снять и не трогать чужие."""
+"""Windows firewall backend через PowerShell (модуль NetSecurity).
+
+Почему PowerShell, а не netsh: netsh advfirewall firewall add rule НЕ поддерживает
+параметр group=, из-за чего команда возвращает rc=1 без внятной ошибки. New-NetFirewallRule
+принимает -Group нормально, плюс лучше работает с IPv6 и позволяет чистой командой
+Remove-NetFirewallRule -Group снять все наши правила разом.
+"""
 from __future__ import annotations
 
 import re
@@ -7,29 +12,50 @@ import re
 from agent.policy.backends.base import Command, FirewallBackend
 from agent.policy.model import FirewallRule
 
-_NETSH = ["netsh", "advfirewall", "firewall"]
 GROUP = "Aegis"
 NAME_PREFIX = "Aegis-"
-# Имена правил Aegis не локализуются (в отличие от меток netsh), поэтому дрейф на
-# Windows сверяем по именам — это устойчиво к языку ОС.
 _NAME_RE = re.compile(r"Aegis-\S+")
 
 
 def _rule_name(index: int, rule: FirewallRule) -> str:
-    # без пробелов, чтобы имя целиком ловилось одним токеном при разборе вывода
     suffix = ("-" + rule.comment.replace(" ", "_")) if rule.comment else ""
     return f"{NAME_PREFIX}{index}{suffix}"
 
 
 def _action(a: str) -> str:
-    # ACCEPT -> allow; DROP/REJECT -> block
-    return "allow" if a.upper() == "ACCEPT" else "block"
+    return "Allow" if a.upper() == "ACCEPT" else "Block"
 
 
-def _dir(rule: FirewallRule) -> str:
+def _direction(rule: FirewallRule) -> str:
     if rule.chain.upper() == "INPUT" or rule.direction.lower() == "in":
-        return "in"
-    return "out"
+        return "Inbound"
+    return "Outbound"
+
+
+def _protocol(proto: str) -> str:
+    p = (proto or "").lower()
+    if p in ("tcp", "udp"):
+        return p.upper()
+    if p in ("icmp", "icmpv4"):
+        return "ICMPv4"
+    if p == "icmpv6":
+        return "ICMPv6"
+    return "Any"
+
+
+def _ps(cmdlet: str, params: dict[str, str]) -> Command:
+    """PowerShell-команда как argv: powershell -NoProfile -Command "cmdlet ...".
+
+    Значения оборачиваем в '...' и экранируем внутренние апострофы удвоением.
+    """
+    parts = [cmdlet]
+    for key, value in params.items():
+        if value is None:
+            continue
+        parts.append(f"-{key} '{str(value).replace(chr(39), chr(39) * 2)}'")
+    return Command(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", " ".join(parts)]
+    )
 
 
 class WindowsFirewallBackend(FirewallBackend):
@@ -41,10 +67,14 @@ class WindowsFirewallBackend(FirewallBackend):
         default_drop_output: bool,
     ) -> list[Command]:
         cmds: list[Command] = []
+
         # снять прежние правила группы Aegis (идемпотентность)
         cmds.append(
             Command(
-                _NETSH + ["delete", "rule", f"name=all", f"group={GROUP}"],
+                [
+                    "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                    f"Remove-NetFirewallRule -Group '{GROUP}' -ErrorAction SilentlyContinue",
+                ],
                 allow_fail=True,
                 note="remove old Aegis rules",
             )
@@ -52,29 +82,27 @@ class WindowsFirewallBackend(FirewallBackend):
 
         for i, r in enumerate(rules):
             name = _rule_name(i, r)
-            argv = _NETSH + [
-                "add",
-                "rule",
-                f"name={name}",
-                f"dir={_dir(r)}",
-                f"action={_action(r.action)}",
-                f"group={GROUP}",
-                "enable=yes",
-            ]
-            proto = r.protocol.lower()
-            argv.append(f"protocol={proto if proto and proto != 'all' else 'any'}")
+            params: dict[str, str] = {
+                "DisplayName": name,
+                "Group": GROUP,
+                "Direction": _direction(r),
+                "Action": _action(r.action),
+                "Protocol": _protocol(r.protocol),
+                "Enabled": "True",
+            }
             if r.remote:
-                argv.append(f"remoteip={r.remote}")
-            if r.port and proto in ("tcp", "udp"):
-                argv.append(f"remoteport={r.port}")
-            cmds.append(Command(argv, note=r.comment))
+                params["RemoteAddress"] = r.remote
+            if r.port and r.protocol.lower() in ("tcp", "udp"):
+                params["RemotePort"] = str(r.port)
+            cmds.append(Command(_ps("New-NetFirewallRule", params).argv, note=r.comment))
 
         if default_drop_output:
-            # запрет всего исходящего по умолчанию (разрешённое — добавлено выше allow-правилами)
             cmds.append(
                 Command(
-                    ["netsh", "advfirewall", "set", "allprofiles", "firewallpolicy",
-                     "blockinbound,blockoutbound"],
+                    [
+                        "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                        "Set-NetFirewallProfile -All -DefaultOutboundAction Block",
+                    ],
                     note="default deny egress",
                 )
             )
@@ -82,24 +110,35 @@ class WindowsFirewallBackend(FirewallBackend):
 
     def list_commands(self) -> list[Command]:
         return [
-            Command(_NETSH + ["show", "rule", f"name=all", f"group={GROUP}"], allow_fail=True),
+            Command(
+                [
+                    "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                    f"Get-NetFirewallRule -Group '{GROUP}' -ErrorAction SilentlyContinue "
+                    "| Select-Object -ExpandProperty DisplayName",
+                ],
+                allow_fail=True,
+            ),
         ]
 
     def desired_keys(self, rules, default_drop_output):
-        # эталон = имена правил, которые мы создадим
         return {_rule_name(i, r) for i, r in enumerate(rules)}
 
     def parse_current(self, outputs):
         names: set[str] = set()
         for out in outputs:
-            for m in _NAME_RE.findall(out):
-                names.add(m.rstrip(",;."))
+            for line in out.splitlines():
+                m = _NAME_RE.match(line.strip())
+                if m:
+                    names.add(m.group(0))
         return names
 
     def cleanup_commands(self) -> list[Command]:
         return [
             Command(
-                _NETSH + ["delete", "rule", "name=all", f"group={GROUP}"],
+                [
+                    "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                    f"Remove-NetFirewallRule -Group '{GROUP}' -ErrorAction SilentlyContinue",
+                ],
                 allow_fail=True,
                 note="remove all Aegis rules",
             ),
