@@ -56,6 +56,9 @@ message HeartbeatRequest {
   google.protobuf.Timestamp sent_at = 2;
   string agent_version = 3;
   string config_version = 4;     // какую версию политики агент сейчас применяет
+  string hostname = 5;
+  string os = 6;                 // "linux" | "windows" | ...
+  string arch = 7;               // "amd64" | "arm64" | ...
 }
 
 message HeartbeatResponse {

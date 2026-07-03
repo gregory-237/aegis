@@ -46,11 +46,15 @@ class IngestClient:
             return False
 
     def heartbeat(self) -> "pb.HeartbeatResponse | None":
+        import socket
         req = pb.HeartbeatRequest(
             agent_id=self._cfg.agent_id,
             sent_at=_to_pb_timestamp(datetime.now(timezone.utc)),
             agent_version=self._cfg.agent_version,
             config_version=self.config_version,
+            hostname=socket.gethostname(),
+            os=self._cfg.os_name,
+            arch=self._cfg.arch,
         )
         return self._stub.Heartbeat(req, timeout=self._cfg.rpc_timeout_sec)
 

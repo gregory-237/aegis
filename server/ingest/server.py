@@ -85,11 +85,23 @@ class MonitorServicer(pb_grpc.MonitorServicer):
 
     def Heartbeat(self, request: "pb.HeartbeatRequest", context):
         cn = _peer_identity(context)
+        # peer() у grpc возвращает "ipv4:1.2.3.4:5678" или "ipv6:[::1]:1234"
+        peer_ip = ""
+        peer = context.peer() or ""
+        if peer.startswith("ipv4:"):
+            peer_ip = peer[5:].rsplit(":", 1)[0]
+        elif peer.startswith("ipv6:"):
+            peer_ip = peer[5:].rsplit(":", 1)[0].strip("[]")
+
         self._state.upsert_machine(
             request.agent_id,
             status="online",
             agent_version=request.agent_version,
             config_version=request.config_version,
+            hostname=request.hostname,
+            os=request.os,
+            arch=request.arch,
+            ip=peer_ip,
             last_seen=datetime.now(timezone.utc),
         )
         record = self._state.get_policy_for_agent(request.agent_id)

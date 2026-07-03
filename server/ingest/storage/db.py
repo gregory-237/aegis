@@ -20,13 +20,16 @@ except ImportError:  # psycopg2 не установлен — работаем �
 
 
 _UPSERT_MACHINE = """
-INSERT INTO machines (agent_id, hostname, os, arch, agent_version, config_version, status, last_seen)
-VALUES (%(agent_id)s, %(hostname)s, %(os)s, %(arch)s, %(agent_version)s, %(config_version)s,
-        %(status)s, %(last_seen)s)
+INSERT INTO machines (agent_id, hostname, os, arch, ip,
+                      agent_version, config_version, status, last_seen)
+VALUES (%(agent_id)s, %(hostname)s, %(os)s, %(arch)s,
+        NULLIF(%(ip)s, '')::inet,
+        %(agent_version)s, %(config_version)s, %(status)s, %(last_seen)s)
 ON CONFLICT (agent_id) DO UPDATE SET
   hostname       = COALESCE(NULLIF(EXCLUDED.hostname, ''), machines.hostname),
   os             = COALESCE(NULLIF(EXCLUDED.os, ''), machines.os),
   arch           = COALESCE(NULLIF(EXCLUDED.arch, ''), machines.arch),
+  ip             = COALESCE(EXCLUDED.ip, machines.ip),
   agent_version  = COALESCE(NULLIF(EXCLUDED.agent_version, ''), machines.agent_version),
   config_version = COALESCE(NULLIF(EXCLUDED.config_version, ''), machines.config_version),
   status         = EXCLUDED.status,
@@ -80,6 +83,7 @@ class StateStore:
         hostname: str = "",
         os: str = "",
         arch: str = "",
+        ip: str = "",
         agent_version: str = "",
         config_version: str = "",
         status: str = "online",
@@ -94,6 +98,7 @@ class StateStore:
                 "hostname": hostname,
                 "os": os,
                 "arch": arch,
+                "ip": ip,
                 "agent_version": agent_version,
                 "config_version": config_version,
                 "status": status,
