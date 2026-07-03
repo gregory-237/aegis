@@ -130,3 +130,13 @@ class IptablesBackend(FirewallBackend):
                     if k:
                         keys.add(k)
         return keys
+
+    def cleanup_commands(self) -> list[Command]:
+        return [
+            Command([_IPT, "-D", "OUTPUT", "-j", OUT_CHAIN], allow_fail=True, note="detach out"),
+            Command([_IPT, "-D", "INPUT", "-j", IN_CHAIN], allow_fail=True, note="detach in"),
+            Command([_IPT, "-F", OUT_CHAIN], allow_fail=True, note="flush out"),
+            Command([_IPT, "-F", IN_CHAIN], allow_fail=True, note="flush in"),
+            Command([_IPT, "-X", OUT_CHAIN], allow_fail=True, note="drop out chain"),
+            Command([_IPT, "-X", IN_CHAIN], allow_fail=True, note="drop in chain"),
+        ]

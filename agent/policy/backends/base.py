@@ -48,3 +48,11 @@ class FirewallBackend(abc.ABC):
     @abc.abstractmethod
     def parse_current(self, outputs: list[str]) -> set:
         """Распарсить вывод list_commands в набор ключей в том же каноне, что desired_keys."""
+
+    @abc.abstractmethod
+    def cleanup_commands(self) -> list[Command]:
+        """Команды для полного снятия правил Aegis и возврата хоста в исходное состояние.
+
+        Вызывается при остановке агента. Должна затрагивать только НАШИ правила
+        (в группе Aegis / цепочках AEGIS_*) и не трогать чужие.
+        """

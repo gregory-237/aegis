@@ -95,3 +95,12 @@ class WindowsFirewallBackend(FirewallBackend):
             for m in _NAME_RE.findall(out):
                 names.add(m.rstrip(",;."))
         return names
+
+    def cleanup_commands(self) -> list[Command]:
+        return [
+            Command(
+                _NETSH + ["delete", "rule", "name=all", f"group={GROUP}"],
+                allow_fail=True,
+                note="remove all Aegis rules",
+            ),
+        ]

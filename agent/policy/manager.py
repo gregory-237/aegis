@@ -99,9 +99,12 @@ class PolicyManager:
             )
         return rules, resolved
 
-    def plan(self, policy: Policy) -> tuple[list[Command], PlanResult]:
+    def plan(self, policy: Policy, *, demo_safe: bool = False) -> tuple[list[Command], PlanResult]:
         rules, resolved = self.compile_rules(policy)
-        default_drop = bool(policy.allowed_domains)
+        # В demo-safe режиме не трогаем глобальную default-policy: возврат к исходному
+        # состоянию хоста при выходе агента упирается в сохранение чужой конфигурации,
+        # поэтому проще не менять её вовсе. Свои ACCEPT-правила при этом остаются.
+        default_drop = bool(policy.allowed_domains) and not demo_safe
         self._last_rules, self._last_default_drop = rules, default_drop
         cmds = self._backend.build_commands(rules, default_drop_output=default_drop)
         result = PlanResult(
@@ -112,8 +115,8 @@ class PolicyManager:
         )
         return cmds, result
 
-    def apply(self, policy: Policy, dry_run: bool = True) -> PlanResult:
-        cmds, result = self.plan(policy)
+    def apply(self, policy: Policy, dry_run: bool = True, demo_safe: bool = False) -> PlanResult:
+        cmds, result = self.plan(policy, demo_safe=demo_safe)
         log.info(
             "политика v=%s backend=%s: %d команд, default_drop=%s, dry_run=%s",
             policy.version, result.backend, len(cmds), result.default_drop_output, dry_run,
@@ -149,3 +152,27 @@ class PolicyManager:
         if rc != 0 and not cmd.allow_fail:
             log.warning("команда не удалась (%s): %s", rc, err.strip())
         return rc
+
+    def cleanup(self, dry_run: bool = False) -> list[str]:
+        """Снять применённые правила Aegis. Возвращает список ошибок (пустой = ок)."""
+        cmds = self._backend.cleanup_commands()
+        if not cmds:
+            return []
+        log.info("снимаю правила Aegis (%d команд, dry_run=%s)", len(cmds), dry_run)
+        failures: list[str] = []
+        if dry_run:
+            for c in cmds:
+                log.info("  [dry-run cleanup] %s", c)
+            return failures
+        if not is_privileged():
+            log.warning("нет прав root/Administrator — cleanup пропущен")
+            return ["no privileges"]
+        for c in cmds:
+            rc = self._run(c)
+            if rc != 0 and not c.allow_fail:
+                failures.append(f"rc={rc}: {c}")
+        if failures:
+            log.error("cleanup с ошибками: %s", failures)
+        else:
+            log.info("правила Aegis сняты, состояние восстановлено")
+        return failures

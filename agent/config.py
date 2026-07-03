@@ -62,6 +62,17 @@ class Config:
     # чтобы отладка не оставляла машину без сети.
     policy_apply: bool = os.environ.get("AEGIS_POLICY_APPLY", "0").lower() in ("1", "true", "yes")
 
+    # demo-safe: не менять глобальную default-policy firewall (только свои ACCEPT-правила),
+    # чтобы при выходе агента хост гарантированно вернулся к исходному состоянию.
+    policy_demo_safe: bool = os.environ.get("AEGIS_POLICY_DEMO_SAFE", "1").lower() in (
+        "1", "true", "yes",
+    )
+
+    # На выходе агента снимать применённые правила Aegis (SIGINT/SIGTERM/закрытие окна).
+    cleanup_on_exit: bool = os.environ.get("AEGIS_CLEANUP_ON_EXIT", "1").lower() in (
+        "1", "true", "yes",
+    )
+
     drift_interval_sec: int = int(os.environ.get("AEGIS_DRIFT_INTERVAL", "60"))
     drift_autorollback: bool = os.environ.get("AEGIS_DRIFT_ROLLBACK", "1").lower() in (
         "1", "true", "yes",

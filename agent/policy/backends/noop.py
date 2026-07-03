@@ -22,3 +22,6 @@ class NoopBackend(FirewallBackend):
 
     def parse_current(self, outputs: list[str]) -> set:
         return set()
+
+    def cleanup_commands(self) -> list[Command]:
+        return []

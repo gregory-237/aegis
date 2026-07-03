@@ -1,6 +1,7 @@
 """Точка входа агента."""
 from __future__ import annotations
 
+import atexit
 import logging
 import pathlib
 import signal
@@ -41,7 +42,11 @@ def apply_policy_at_start(client: IngestClient) -> "PolicyManager | None":
 
     policy = Policy.from_pb(resp.policy, version=resp.version)
     manager = PolicyManager(server_host=config.server_host)
-    result = manager.apply(policy, dry_run=not config.policy_apply)
+    result = manager.apply(
+        policy,
+        dry_run=not config.policy_apply,
+        demo_safe=config.policy_demo_safe,
+    )
     client.config_version = resp.version
 
     severity = pb.Severity.INFO if result.ok else pb.Severity.WARNING
@@ -61,6 +66,8 @@ def apply_policy_at_start(client: IngestClient) -> "PolicyManager | None":
         )
     except grpc.RpcError as e:
         log.warning("не удалось отправить событие policy_applied: %s", e.code())
+    global _active_manager
+    _active_manager = manager
     return manager
 
 
@@ -139,7 +146,14 @@ def run() -> None:
             try:
                 resp = client.heartbeat()
                 if resp and resp.config_outdated:
-                    log.info("сервер сообщает: конфиг устарел — нужно GetConfig")
+                    log.info("сервер: конфиг устарел — перечитываю политику")
+                    new_manager = apply_policy_at_start(client)
+                    if new_manager is not None:
+                        manager = new_manager
+                        if config.policy_apply:
+                            monitor = DriftMonitor(manager.backend)
+                            rules, default_drop = manager.last_reference
+                            monitor.set_reference(rules, default_drop)
                 last_heartbeat = now
             except grpc.RpcError as e:
                 log.warning("heartbeat не прошёл: %s", e.code())
@@ -158,7 +172,50 @@ def run() -> None:
     log.info("агент остановлен")
 
 
+_active_manager: "PolicyManager | None" = None
+
+
+def _register_cleanup_hooks() -> None:
+    """Гарантированно снимает правила Aegis при любом варианте выхода."""
+
+    def _do_cleanup() -> None:
+        global _active_manager
+        if _active_manager is None or not config.policy_apply:
+            return
+        try:
+            _active_manager.cleanup()
+        except Exception as e:  # noqa: BLE001
+            log.error("ошибка cleanup: %s", e)
+        _active_manager = None
+
+    atexit.register(_do_cleanup)
+
+    def _handler(*_a) -> None:
+        _stop()
+        _do_cleanup()
+
+    signal.signal(signal.SIGINT, _handler)
+    signal.signal(signal.SIGTERM, _handler)
+
+    # Windows: закрытие консольного окна (крестик) шлёт CTRL_CLOSE_EVENT,
+    # который signal-модуль не ловит. Ловим через kernel32.SetConsoleCtrlHandler.
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            HandlerRoutine = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_ulong)
+
+            def _win_handler(_ctrl_type):
+                _do_cleanup()
+                return False  # передаём дальше стандартной обработке (завершит процесс)
+
+            _keepalive = HandlerRoutine(_win_handler)
+            _register_cleanup_hooks._keepalive = _keepalive  # чтобы GC не убил callback
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(_keepalive, True)
+        except Exception as e:  # noqa: BLE001
+            log.warning("SetConsoleCtrlHandler недоступен: %s", e)
+
+
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, _stop)
-    signal.signal(signal.SIGTERM, _stop)
+    _register_cleanup_hooks()
     run()
